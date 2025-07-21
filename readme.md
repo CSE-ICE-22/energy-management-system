@@ -1,4 +1,4 @@
-##⚡ Energy Management System
+## ⚡ Energy Management System
 
 ## 🌍 Project Overview  
 As the demand for automation, robotics, and IoT devices continues to grow, efficient energy usage becomes critical. Currently, there's no comprehensive system in place to monitor and manage energy across these platforms. Our project bridges that gap by providing a **cost-effective and sustainable energy management solution** using a blend of hardware and software.
