@@ -1,0 +1,188 @@
+### Key Points
+- **State of Charge (SoC) Estimation**: The flat voltage curve of Li-ion batteries between 80% and 20% SoC makes voltage-based estimation unreliable. Coulomb counting, which tracks current over time, seems likely to provide a more accurate SoC estimate in this range.
+- **Implementation**: Using your Arduino Mega and ACS712 sensor, you can measure current, calculate charge used, and estimate SoC and remaining time for display on the OLED screen.
+- **Energy Management**: Techniques like duty cycling, sleep modes, and battery balancing can help extend battery life and ensure safe operation.
+- **Considerations**: Coulomb counting may accumulate errors over time, so periodic recalibration (e.g., at full charge) is recommended. Combining it with voltage monitoring can improve accuracy.
+
+### Calculating Discharge and Displaying SoC
+To address the flat discharge curve issue, you can use **Coulomb counting** to estimate the battery’s SoC. This method measures the current drawn from your 11.1V, 2200mAh Li-ion battery and integrates it over time to calculate the charge used. By subtracting this from the total capacity, you can estimate the remaining SoC and display it on your 0.96" OLED display, along with the voltage (measured via the INA219 sensor) and an estimated remaining runtime based on the current drain rate.
+
+### Estimating Remaining Time
+To estimate remaining time, divide the remaining charge (calculated from SoC) by the current drain rate. This assumes the load remains constant, so for better accuracy, you might average the current over a short period (e.g., 1 minute). Display this information on the OLED for real-time monitoring.
+
+### Energy Management Techniques
+To manage energy effectively:
+- **Use low-power modes**: Put the Arduino Mega and Raspberry Pi Zero 2 W into sleep modes when idle to reduce power consumption.
+- **Balance the battery**: Use your cell voltage monitor IC and balancing resistors to ensure all cells in the 3S pack are balanced, preventing overcharging or overdischarging.
+- **Monitor temperature**: Use the DS18B20 sensor to detect overheating, which can damage the battery.
+- **Set safe limits**: Program the system to stop discharging below 3.0V per cell or charging above 4.2V per cell to protect the battery.
+
+### Recommended Algorithm
+Coulomb counting is a straightforward and widely used algorithm for SoC estimation. It’s well-suited for your setup, given the ACS712 sensor’s ability to measure high currents (e.g., from motors) and the Arduino Mega’s processing capabilities. For improved accuracy, you might combine Coulomb counting with occasional voltage-based checks when the battery is at rest.
+
+---
+
+
+
+# Energy Management System for IoT Device with Li-ion Batteries
+
+This guide outlines how to create an energy management system for your IoT device powered by a 11.1V, 2200mAh Li-ion battery pack, addressing the challenge of accurately estimating the state of charge (SoC) in the 80% to 20% range where the voltage discharge curve is relatively flat. It also provides techniques for efficient energy management to extend battery life and ensure safe operation.
+
+## Understanding the Challenge
+Li-ion batteries, including your 11.1V, 2200mAh 3S pack, exhibit a flat discharge curve between 80% and 20% SoC, where the voltage drops only slightly (from ~3.95V to ~3.55V per cell). This makes voltage-based SoC estimation unreliable in this range, as small voltage changes correspond to large changes in charge. To address this, you can use **Coulomb counting**, a method that tracks the current drawn from the battery over time to estimate the charge used and remaining SoC.
+
+## Coulomb Counting for SoC Estimation
+
+### Principle
+Coulomb counting calculates the total charge used by integrating the current drawn from the battery over time. The SoC is then determined using the formula:
+
+- **SoC (%)** = [(Initial charge - Total charge used) / Total battery capacity] × 100
+
+- **Total charge used** = ∫ I(t) dt, where I(t) is the current at time t.
+- **Battery capacity** = 2200mAh (2.2Ah) for your battery.
+
+### Hardware Requirements
+Your existing components are well-suited for this task:
+- **ACS712 Sensor**: Measures high currents (e.g., motor currents), ideal for tracking total current drawn from the battery.
+- **INA219 Sensor**: Measures voltage and low currents, useful for monitoring system electronics and battery voltage.
+- **Arduino Mega**: Processes sensor data and performs calculations.
+- **0.96" OLED Display**: Displays real-time SoC, voltage, and estimated remaining time.
+- **Cell Voltage Monitor IC (e.g., MAX14921)**: Monitors individual cell voltages for balancing.
+
+### Implementation Steps
+1. **Measure Current**:
+   - Connect the ACS712 sensor in series with the battery’s output to measure the total current drawn by the system (including motors).
+   - Use the Arduino Mega to read current values at regular intervals (e.g., every 100ms).
+
+2. **Integrate Current Over Time**:
+   - For each interval, calculate the charge used:
+     - Charge used (Ah) = Current (A) × Time interval (s) / 3600
+     - Example: If current = 1A and interval = 0.1s, charge used = 1 × 0.1 / 3600 = 0.00002778 Ah
+   - Sum these values to get the total charge used.
+
+3. **Calculate SoC**:
+   - Start with a known initial SoC (e.g., 100% after a full charge).
+   - Total charge used = Sum of charge used per interval.
+   - SoC = [(Initial charge - Total charge used) / 2.2] × 100
+
+4. **Handle Initial SoC**:
+   - If the battery is fully charged, set initial SoC to 100%.
+   - If not, estimate initial SoC using open-circuit voltage (OCV) when the battery is at rest, referencing a voltage-SoC lookup table (e.g., 4.2V = 100%, 3.7V ≈ 50%).
+
+5. **Display on OLED**:
+   - Show:
+     - SoC (e.g., "SoC: 65%")
+     - Voltage (from INA219, e.g., "Voltage: 10.5V")
+     - Estimated remaining time (see below)
+
+### Sample Arduino Code
+Below is a sample Arduino code snippet to implement Coulomb counting:
+
+```cpp
+float totalChargeUsed = 0; // Total charge used in Ah
+float batteryCapacity = 2.2; // Battery capacity in Ah
+float initialSoC = 100; // Initial SoC in %
+unsigned long lastTime = 0; // Last measurement time
+float timeInterval = 0.1; // Sampling interval in seconds (100ms)
+
+void setup() {
+  // Initialize ACS712 sensor and OLED display
+  // (Add your sensor and display initialization code here)
+}
+
+void loop() {
+  unsigned long currentTime = millis();
+  if (currentTime - lastTime >= timeInterval * 1000) {
+    float current = readCurrentFromACS712(); // Function to read current from ACS712
+    float chargeUsed = current * timeInterval / 3600.0; // Charge in Ah
+    totalChargeUsed += chargeUsed;
+    float soc = (initialSoC - (totalChargeUsed / batteryCapacity) * 100);
+    float voltage = readVoltageFromINA219(); // Function to read voltage from INA219
+    float remainingTime = (soc / 100 * batteryCapacity) / current; // Hours
+    displayStats(soc, voltage, remainingTime); // Function to display on OLED
+    lastTime = currentTime;
+  }
+}
+```
+
+### Considerations
+- **Coulombic Efficiency**: Li-ion batteries have ~99-100% efficiency. For simplicity, assume 100% unless high precision is needed.
+- **Error Accumulation**: Coulomb counting can accumulate errors due to sensor inaccuracies. Recalibrate by fully charging the battery periodically.
+- **Sampling Rate**: A 100ms interval balances accuracy and processing load. Adjust based on your system’s needs.
+
+## Estimating Remaining Time
+To estimate remaining time:
+- **Remaining charge** = (SoC / 100) × Battery capacity (2.2Ah)
+- **Remaining time (hours)** = Remaining charge / Current drain
+- **Example**: If SoC = 60% and current = 0.5A:
+  - Remaining charge = 0.6 × 2.2 = 1.32 Ah
+  - Remaining time = 1.32 / 0.5 = 2.64 hours
+- **Improvement**: Average the current over a short period (e.g., 1 minute) to account for load variations.
+
+Display this on the OLED as "Remaining Time: 2.6h".
+
+## Energy Management Techniques
+To maximize battery life and ensure safe operation, implement the following techniques:
+
+### 1. Power-Saving Modes
+- **Duty Cycling**:
+  - Configure the Arduino Mega and Raspberry Pi Zero 2 W to enter deep sleep modes when idle, waking up periodically (e.g., every hour) using a real-time clock (RTC).
+  - Example: In a smart irrigation system, the device might wake up once per hour to check sensors.
+- **Sleep Modes**:
+  - Use light sleep (disable communication and sensors) or deep sleep (disable most peripherals) to minimize power consumption.
+  - For the Raspberry Pi, reduce ML model execution frequency or use low-power modes.
+
+### 2. Battery Balancing
+- Your 3S Li-ion pack requires balancing to prevent cell voltage imbalances.
+- **Implementation**:
+  - Use the Cell Voltage Monitor IC (e.g., MAX14921) to monitor individual cell voltages.
+  - Connect balancing resistors (100Ω, 2W) via N-channel MOSFETs (e.g., IRLZ44N) to dissipate excess charge from higher-voltage cells.
+  - Example: If one cell is at 4.1V while others are at 3.9V, activate the MOSFET to connect the resistor, reducing the higher cell’s voltage.
+
+### 3. Voltage and Current Monitoring
+- **Voltage**: Use the INA219 to monitor the battery’s total voltage and ensure it stays within safe limits (9.0V to 12.6V for a 3S pack).
+- **Current**: Use the ACS712 to monitor total current, ensuring accurate Coulomb counting.
+- **Safety Limits**:
+  - Stop discharging if cell voltage drops below 3.0V.
+  - Stop charging if cell voltage exceeds 4.2V.
+
+### 4. Temperature Monitoring
+- Use the DS18B20 sensor to monitor battery temperature.
+- Set a threshold (e.g., 45°C) to trigger alerts or shutdown to prevent thermal runaway.
+
+### 5. Optimize Power Consumption
+- **Motors**: Use efficient motor drivers to reduce power draw.
+- **ML Model**: Optimize the model on the Raspberry Pi to run less frequently or with lower computational intensity.
+- **Peripherals**: Disable the OLED display when not needed (e.g., after a timeout).
+
+### 6. Energy Harvesting (Optional)
+- Consider adding a small solar panel to recharge the battery during operation, especially for outdoor IoT applications.
+
+## Hardware Setup
+Below is a table summarizing how to use your components for the energy management system:
+
+| **Component**                     | **Purpose**                                                                 | **Usage**                                                                 |
+|-----------------------------------|-----------------------------------------------------------------------------|---------------------------------------------------------------------------|
+| Arduino Mega                     | Data collection, Coulomb counting, relay control                           | Processes sensor data, calculates SoC, controls display and relays         |
+| Raspberry Pi Zero 2 W            | Runs ML model for runtime prediction                                       | Optimize for low power, run ML model periodically                         |
+| INA219 Sensor                    | Measures voltage and low currents                                           | Monitor battery voltage and system electronics current                    |
+| ACS712 Sensor                    | Measures high motor currents                                                | Measure total battery current for Coulomb counting                        |
+| 0.96" OLED Display               | Displays real-time battery stats (SoC, voltage, remaining time)             | Show real-time data, disable when not needed                              |
+| Relay Module                     | Controls power to motors                                                    | Enable/disable motors to save power                                       |
+| Cell Voltage Monitor IC          | Monitors individual cell voltages                                           | Ensure cell balancing, detect over/under-voltage conditions               |
+| Balancing Resistors (100Ω, 2W)   | Dissipates excess charge for balancing                                      | Used with MOSFETs for passive balancing                                   |
+| N-channel MOSFETs (IRLZ44N)      | Switches balancing resistors on/off                                         | Controlled by Arduino to balance cells                                    |
+| DS18B20 Temperature Sensor       | Monitors battery temperature                                                | Prevent overheating, trigger alerts if temperature exceeds safe limits     |
+
+## Potential Improvements
+- **Combine Methods**: Use Coulomb counting with occasional OCV-based checks (when the battery is at rest) to improve accuracy.
+- **Advanced BMS**: If budget allows, consider a dedicated BMS IC (e.g., BQ769x0) for more precise monitoring and balancing.
+- **Data Logging**: Store historical SoC and current data on the SD card for ML model training to predict runtime more accurately.
+
+## Conclusion
+By implementing Coulomb counting with your ACS712 sensor and Arduino Mega, you can accurately estimate the SoC in the 80% to 20% range, overcoming the limitations of the flat discharge curve. Displaying SoC, voltage, and estimated remaining time on the OLED provides clear real-time feedback. Combining this with energy management techniques like duty cycling, battery balancing, and temperature monitoring ensures efficient and safe operation of your IoT device.
+
+**References**:
+- [Implementation of Coulomb Counting Method for Estimating the State of Charge of Lithium-Ion Battery](https://www.researchgate.net/publication/352428548_Implementation_of_Coulomb_Counting_Method_for_Estimating_the_State_of_Charge_of_Lithium-Ion_Battery)
+- [Greatly Improve Battery Power Efficiency for IoT Devices](https://www.analog.com/en/resources/technical-articles/greatly-improve-battery-power-efficiency-for-iot-devices.html)
+
