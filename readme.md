@@ -22,9 +22,7 @@ This hybrid hardware-software system ensures smarter energy consumption and sust
 - 🧠 **Intelligent Algorithms** – Analyzes usage trends and applies best-fit power strategies
 
 ## 🧩 System Architecture  
-_Architecture is currently being designed to integrate sensing modules, microcontrollers, and software interfaces in a scalable, modular structure._  
-
-Stay tuned for updates!
+Not yet decided
 
 ## 📎 Project Proposal  
 Take a deeper look at the design, objectives, and implementation roadmap in the official proposal:  
