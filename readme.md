@@ -1,7 +1,7 @@
-⚡ Energy Management System
+## ⚡ Energy Management System
 
 ## 🌍 Project Overview  
-As the demand for automation, robotics, and IoT devices continues to grow, efficient energy usage becomes critical. Currently, there's no comprehensive system in place to monitor and manage energy across these platforms. Our project bridges that gap by providing a **cost-effective and sustainable energy management solution** using a blend of hardware and software.
+When we are working with machines,robots and IOT devices there isn't a proper system to manage the energy. Our project bridges that gap by providing a **cost-effective and sustainable energy management solution** using a blend of hardware and software.
 
 ## 🚧 Problem Statement  
 In systems operating with machines, robots, and IoT devices, energy is often consumed inefficiently due to the lack of real-time monitoring and intelligent control. This leads to excess consumption, increased costs, and system instability.
@@ -22,9 +22,7 @@ This hybrid hardware-software system ensures smarter energy consumption and sust
 - 🧠 **Intelligent Algorithms** – Analyzes usage trends and applies best-fit power strategies
 
 ## 🧩 System Architecture  
-_Architecture is currently being designed to integrate sensing modules, microcontrollers, and software interfaces in a scalable, modular structure._  
-
-Stay tuned for updates!
+Not yet decided
 
 ## 📎 Project Proposal  
 Take a deeper look at the design, objectives, and implementation roadmap in the official proposal:  
