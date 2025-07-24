@@ -22,7 +22,7 @@ This hybrid hardware-software system ensures smarter energy consumption and sust
 - 🧠 **Intelligent Algorithms** – Analyzes usage trends and applies best-fit power strategies
 
 ## 🧩 System Architecture  
-Not yet decided
+Architecture chart link : https://lucid.app/lucidspark/6f987f3d-090f-4289-82d1-03bc7058cdde/edit?viewport_loc=-5457%2C-3395%2C9600%2C4562%2C0_0&invitationId=inv_df8d2eeb-39a6-4067-aea3-467021520ec9
 
 ## 📎 Project Proposal  
 Take a deeper look at the design, objectives, and implementation roadmap in the official proposal:  
