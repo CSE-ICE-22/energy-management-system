@@ -1,0 +1,44 @@
+graph TD
+    subgraph Power Supply Module
+        A[Li-ion Battery Pack<br>11.1V, 2200mAh] -->|Power| B[Battery Charger]
+        B -->|Charging| A
+        A -->|Power| C[Cell Voltage Monitor IC<br>MAX14921/LTC6804]
+        C -->|Balancing| D[Balancing Resistors<br>100Ω, 2W + MOSFETs]
+        D -->|Heat Monitoring| E[Temperature Sensor<br>DS18B20]
+    end
+
+    subgraph Sensing Module
+        F[INA219 Sensor<br>Voltage/Current] -->|Data| I
+        G[ACS712 Sensor<br>High Current] -->|Data| I
+        E -->|Data| I
+    end
+
+    subgraph Control Module
+        I[Arduino Mega] -->|Control| J[Relay Module]
+        J -->|Power Control| K[Motors/Devices]
+        A -->|Power| I
+        A -->|Power| J
+    end
+
+    subgraph Processing Module
+        L[Raspberry Pi Zero 2 W] -->|Data Storage| M[SD Card<br>16GB]
+        L -->|ML & Optimization| L
+        I -->|Serial Data| L
+        L -->|Control Signals| I
+    end
+
+    subgraph Display Module
+        I -->|Display Data| N[0.96 OLED Display]
+    end
+
+    subgraph Remote Interface Optional
+        L -->|Wi-Fi| O[Remote Dashboard/App]
+    end
+
+    A -->|Power| L
+    A -->|Power| F
+    A -->|Power| G
+    A -->|Power| N
+
+    classDef module fill:#f9f,stroke:#333,stroke-width:2px;
+    class A,B,C,D,E,F,G,I,J,K,L,M,N,O module;
