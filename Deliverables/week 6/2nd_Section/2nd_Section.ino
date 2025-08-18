@@ -19,13 +19,13 @@ Adafruit_INA219 ina219_charge(0x41);
 Preferences preferences;
 
 // Battery capacity (mAh)
-float capacity_mAh = 3000.0; // Initial assumption, updated from NVS
+float capacity_mAh = 0; // assumption
 unsigned long lastMillis = 0;
 
 void setup() {
   Serial.begin(115200);
   while (!Serial) {
-    delay(1); // Wait for Serial Monitor
+    delay(1); 
   }
   
   // Initialize I2C with SDA=GPIO21, SCL=GPIO22
@@ -52,10 +52,10 @@ void setup() {
     while (1) { delay(10); }
   }
   
-  // Load stored capacity from NVS
+  // Load stored capacity from Non Volatile Storage
   preferences.begin("battery", false);
-  capacity_mAh = preferences.getFloat("capacity", 3000.0); // Default to 3000 if not set
-  if (capacity_mAh < 0 || capacity_mAh > 5000) capacity_mAh = 3000.0; // Clamp to reasonable range
+  capacity_mAh = preferences.getFloat("capacity", 3000.0); 
+  if (capacity_mAh < 0 || capacity_mAh > 5000) capacity_mAh = 3000.0; 
   
   // Clear OLED and show startup message
   display.clearDisplay();
@@ -72,9 +72,8 @@ void setup() {
 }
 
 void loop() {
-  // Calculate time delta for coulomb counting
   unsigned long currentMillis = millis();
-  float delta_t = (currentMillis - lastMillis) / 1000.0; // Seconds
+  float delta_t = (currentMillis - lastMillis) / 1000.0; 
   lastMillis = currentMillis;
   
   // Read load/discharge measurements
@@ -95,25 +94,27 @@ void loop() {
   // Charge voltage
   float charge_V = bus_charge_V;
   
-  // Mode detection
-  bool isCharging = (current_charge_mA > 10.0); // Charging if charge current > 10 mA
-  bool isDischarging = (current_load_mA > 10.0 && current_charge_mA < 10.0); // Discharging if load current > 10 mA, charge current near 0
+  // Mode detection(charging or discharging)
+  bool isCharging = (current_charge_mA > 10.0); 
+  bool isDischarging = (current_load_mA > 10.0 && current_charge_mA < 10.0); 
   
   // Capacity and remaining time
   float remaining_time_h = 0.0;
   if (isCharging) {
     // Charging mode: calculate capacity
-    capacity_mAh += (current_charge_mA * delta_t / 3600.0); // mAh
+    capacity_mAh += (current_charge_mA * delta_t / 3600.0); 
     if (capacity_mAh < 0) capacity_mAh = 0;
-    if (capacity_mAh > 5000) capacity_mAh = 5000; // Adjust max based on battery
-    preferences.putFloat("capacity", capacity_mAh); // Store in NVS
+    if (capacity_mAh > 5000) capacity_mAh = 5000; 
+    // Store in Non Volatile Storage
+    preferences.putFloat("capacity", capacity_mAh); 
   } else if (isDischarging) {
     // Discharging mode: update capacity and calculate remaining time
-    capacity_mAh -= (current_load_mA * delta_t / 3600.0); // Update capacity
+    capacity_mAh -= (current_load_mA * delta_t / 3600.0);
     if (capacity_mAh < 0) capacity_mAh = 0;
-    preferences.putFloat("capacity", capacity_mAh); // Store in NVS
+    // Store in Non Volatile Storage
+    preferences.putFloat("capacity", capacity_mAh); 
     if (load_current_mA > 0) {
-      remaining_time_h = capacity_mAh / load_current_mA; // Hours
+      remaining_time_h = capacity_mAh / load_current_mA; 
     }
   }
   
@@ -166,9 +167,10 @@ void loop() {
   }
   display.display();
   
-  delay(2000); // Update every 2 seconds
+  delay(2000); 
 }
 
 void loopEnd() {
-  preferences.end(); // Close NVS
+  // Close Non Volatile Storage
+  preferences.end(); 
 }
