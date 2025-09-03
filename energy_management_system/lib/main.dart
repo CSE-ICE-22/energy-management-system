@@ -1,312 +1,475 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:web_socket_channel/io.dart';
 import 'package:fl_chart/fl_chart.dart';
-import 'dart:convert';
+import 'package:provider/provider.dart';
+import 'package:flutter_spinkit/flutter_spinkit.dart';
 
 void main() {
-  runApp(const MyApp());
+  runApp(
+    ChangeNotifierProvider(
+      create: (context) => BatteryDataProvider(),
+      child: const BatteryMonitorApp(),
+    ),
+  );
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+class BatteryDataProvider extends ChangeNotifier {
+  IOWebSocketChannel? _channel;
+  String _connectionStatus = 'Disconnected';
+  String _mode = 'unknown';
+  double _batteryV = 0.0;
+  double _chargeV = 0.0;
+  double _chargeCurrentmA = 0.0;
+  double _loadCurrentmA = 0.0;
+  double _capacitymAh = 0.0;
+  double _remainingTimeH = 0.0;
+  List<FlSpot> _capacityVsTime = [];
+  List<FlSpot> _voltageVsCapacity = [];
+  final int _maxDataPoints = 50;
+
+  String get connectionStatus => _connectionStatus;
+  String get mode => _mode;
+  double get batteryV => _batteryV;
+  double get chargeV => _chargeV;
+  double get chargeCurrentmA => _chargeCurrentmA;
+  double get loadCurrentmA => _loadCurrentmA;
+  double get capacitymAh => _capacitymAh;
+  double get remainingTimeH => _remainingTimeH;
+  List<FlSpot> get capacityVsTime => _capacityVsTime;
+  List<FlSpot> get voltageVsCapacity => _voltageVsCapacity;
+
+  void connect() {
+    try {
+      _channel = IOWebSocketChannel.connect('ws://192.168.4.1:81');
+      _connectionStatus = 'Connected';
+      _channel!.stream.listen(
+        (data) {
+          try {
+            final json = jsonDecode(data);
+            _mode = json['mode'] ?? 'unknown';
+            _batteryV = (json['battery_V'] ?? 0.0).toDouble();
+            _chargeV = (json['charge_V'] ?? 0.0).toDouble();
+            _chargeCurrentmA = (json['charge_current_mA'] ?? 0.0).toDouble();
+            _loadCurrentmA = (json['load_current_mA'] ?? 0.0).toDouble();
+            _capacitymAh = (json['capacity_mAh'] ?? 0.0).toDouble();
+            _remainingTimeH = (json['remaining_time_h'] ?? 0.0).toDouble();
+            double timestamp = (json['timestamp'] ?? 0.0).toDouble();
+
+            // Update charts
+            _capacityVsTime.add(FlSpot(timestamp / 3600, _capacitymAh));
+            _voltageVsCapacity.add(FlSpot(_capacitymAh, _batteryV));
+            if (_capacityVsTime.length > _maxDataPoints) {
+              _capacityVsTime.removeAt(0);
+              _voltageVsCapacity.removeAt(0);
+            }
+            notifyListeners();
+          } catch (e) {
+            _connectionStatus = 'Error: Invalid JSON';
+            notifyListeners();
+          }
+        },
+        onError: (error) {
+          _connectionStatus = 'Error: $error';
+          _channel = null;
+          notifyListeners();
+        },
+        onDone: () {
+          _connectionStatus = 'Disconnected';
+          _channel = null;
+          notifyListeners();
+        },
+      );
+    } catch (e) {
+      _connectionStatus = 'Error: $e';
+      notifyListeners();
+    }
+  }
+
+  void disconnect() {
+    _channel?.sink.close();
+    _channel = null;
+    _connectionStatus = 'Disconnected';
+    notifyListeners();
+  }
+}
+
+class BatteryMonitorApp extends StatelessWidget {
+  const BatteryMonitorApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Energy Management System',
+      debugShowCheckedModeBanner: false,
       theme: ThemeData(
         primarySwatch: Colors.blue,
         scaffoldBackgroundColor: Colors.grey[100],
-        textTheme: TextTheme(
-          headlineMedium: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.blueGrey[900]),
-          titleLarge: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: Colors.blueGrey[800]),
-          bodyMedium: TextStyle(fontSize: 16, color: Colors.blueGrey[700]),
-        ),
-        cardTheme: const CardThemeData(
-          elevation: 4,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(12))),
-          margin: EdgeInsets.symmetric(vertical: 8, horizontal: 16),
-        ),
       ),
-      home: const ChargeScreen(),
+      home: const BatteryMonitorHome(),
     );
   }
 }
 
-class ChargeScreen extends StatefulWidget {
-  const ChargeScreen({super.key});
+class BatteryMonitorHome extends StatefulWidget {
+  const BatteryMonitorHome({super.key});
 
   @override
-  _ChargeScreenState createState() => _ChargeScreenState();
+  _BatteryMonitorHomeState createState() => _BatteryMonitorHomeState();
 }
 
-class _ChargeScreenState extends State<ChargeScreen> {
-  final channel = IOWebSocketChannel.connect('ws://192.168.4.1:81');
-  List<Map<String, dynamic>> chargeData = [];
-  double chargeV = 0.0;
-  double chargeCurrent = 0.0;
-  double capacity = 3000.0;
-  bool isConnected = false;
-
+class _BatteryMonitorHomeState extends State<BatteryMonitorHome> {
   @override
   void initState() {
     super.initState();
-    channel.stream.listen(
-      (data) {
-        final jsonData = jsonDecode(data);
-        if (jsonData['mode'] == 'charging') {
-          setState(() {
-            chargeV = jsonData['charge_V'].toDouble();
-            chargeCurrent = jsonData['charge_current_mA'].toDouble();
-            capacity = jsonData['capacity_mAh'].toDouble();
-            chargeData.add({
-              'timestamp': jsonData['timestamp'].toDouble(),
-              'capacity': capacity,
-              'voltage': chargeV,
-            });
-            if (chargeData.length > 50) chargeData.removeAt(0);
-            isConnected = true;
-          });
-        }
-      },
-      onError: (error) {
-        print('WebSocket error: $error');
-        setState(() {
-          isConnected = false;
-        });
-      },
-      onDone: () {
-        print('WebSocket closed');
-        setState(() {
-          isConnected = false;
-        });
-      },
-    );
-  }
-
-  @override
-  void dispose() {
-    channel.sink.close();
-    super.dispose();
-  }
-
-  Widget _buildStatCard(String title, String value, IconData icon, Color color) {
-    return Card(
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [color.withOpacity(0.1), color.withOpacity(0.3)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Row(
-          children: [
-            Icon(icon, color: color, size: 32),
-            const SizedBox(width: 16),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: Theme.of(context).textTheme.bodyMedium),
-                const SizedBox(height: 4),
-                Text(value, style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: color)),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildChartContainer(String title, LineChartData chartData, Color chartColor) {
-    return Card(
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(title, style: Theme.of(context).textTheme.titleLarge),
-            const SizedBox(height: 16),
-            Container(
-              height: 200,
-              child: LineChart(
-                chartData,
-                duration: const Duration(milliseconds: 250),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Provider.of<BatteryDataProvider>(context, listen: false).connect();
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Energy Management System'),
-        flexibleSpace: Container(
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              colors: [Colors.blue, Colors.blueAccent],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Battery Monitor'),
+          centerTitle: true,
+          flexibleSpace: Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                colors: [Colors.blue, Colors.blueAccent],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
             ),
           ),
+          bottom: const TabBar(
+            tabs: [
+              Tab(
+                icon: Icon(Icons.battery_charging_full, color: Colors.green),
+                text: 'Charging',
+              ),
+              Tab(
+                icon: Icon(Icons.battery_alert, color: Colors.red),
+                text: 'Discharging',
+              ),
+            ],
+          ),
+          actions: [
+            Consumer<BatteryDataProvider>(
+              builder: (context, provider, child) {
+                return Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: Row(
+                    children: [
+                      Text(
+                        provider.connectionStatus,
+                        style: TextStyle(
+                          color: provider.connectionStatus == 'Connected'
+                              ? Colors.green
+                              : Colors.red,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      if (provider.connectionStatus != 'Connected')
+                        IconButton(
+                          icon: const Icon(Icons.refresh),
+                          onPressed: () => provider.connect(),
+                        ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ],
         ),
-        elevation: 4,
-        actions: [
-          Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: Icon(
-              isConnected ? Icons.wifi : Icons.wifi_off,
-              color: isConnected ? Colors.green : Colors.red,
+        body: Consumer<BatteryDataProvider>(
+          builder: (context, provider, child) {
+            return provider.connectionStatus == 'Connected'
+                ? TabBarView(
+                    children: [
+                      ChargingTab(provider: provider),
+                      DischargingTab(provider: provider),
+                    ],
+                  )
+                : Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const SpinKitCircle(color: Colors.blue, size: 50.0),
+                        const SizedBox(height: 20),
+                        Text(
+                          provider.connectionStatus,
+                          style: const TextStyle(fontSize: 18, color: Colors.red),
+                        ),
+                        const SizedBox(height: 20),
+                        ElevatedButton(
+                          onPressed: () => provider.connect(),
+                          child: const Text('Retry Connection'),
+                        ),
+                      ],
+                    ),
+                  );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class ChargingTab extends StatelessWidget {
+  final BatteryDataProvider provider;
+
+  const ChargingTab({super.key, required this.provider});
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 500),
+            padding: const EdgeInsets.all(16.0),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: provider.mode == 'charging'
+                    ? [Colors.green[100]!, Colors.green[300]!]
+                    : [Colors.grey[100]!, Colors.grey[300]!],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.grey.withOpacity(0.5),
+                  spreadRadius: 2,
+                  blurRadius: 5,
+                  offset: const Offset(0, 3),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 500),
+                  child: Icon(
+                    Icons.battery_charging_full,
+                    size: 40,
+                    color: provider.mode == 'charging' ? Colors.green : Colors.grey,
+                    key: ValueKey(provider.mode),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Charging Status: ${provider.mode == 'charging' ? 'Active' : 'Inactive'}',
+                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    ),
+                    Text('Battery Voltage: ${provider.batteryV.toStringAsFixed(2)} V'),
+                    Text('Charge Voltage: ${provider.chargeV.toStringAsFixed(2)} V'),
+                    Text('Charge Current: ${provider.chargeCurrentmA.toStringAsFixed(1)} mA'),
+                    Text('Capacity: ${provider.capacitymAh.toStringAsFixed(0)} mAh'),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
+          const Text(
+            'Capacity vs. Time',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          ),
+          SizedBox(
+            height: 200,
+            child: LineChart(
+              LineChartData(
+                gridData: FlGridData(show: true),
+                titlesData: FlTitlesData(
+                  leftTitles: AxisTitles(
+                    sideTitles: SideTitles(showTitles: true, reservedSize: 40),
+                  ),
+                  bottomTitles: AxisTitles(
+                    sideTitles: SideTitles(showTitles: true, reservedSize: 30),
+                    axisNameWidget: const Text('Time (h)'),
+                  ),
+                ),
+                borderData: FlBorderData(show: true),
+                lineBarsData: [
+                  LineChartBarData(
+                    spots: provider.capacityVsTime,
+                    isCurved: true,
+                    color: Colors.green,
+                    dotData: FlDotData(show: false),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+          const Text(
+            'Voltage vs. Capacity',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          ),
+          SizedBox(
+            height: 200,
+            child: LineChart(
+              LineChartData(
+                gridData: FlGridData(show: true),
+                titlesData: FlTitlesData(
+                  leftTitles: AxisTitles(
+                    sideTitles: SideTitles(showTitles: true, reservedSize: 40),
+                  ),
+                  bottomTitles: AxisTitles(
+                    sideTitles: SideTitles(showTitles: true, reservedSize: 30),
+                    axisNameWidget: const Text('Capacity (mAh)'),
+                  ),
+                ),
+                borderData: FlBorderData(show: true),
+                lineBarsData: [
+                  LineChartBarData(
+                    spots: provider.voltageVsCapacity,
+                    isCurved: true,
+                    color: Colors.green,
+                    dotData: FlDotData(show: false),
+                  ),
+                ],
+              ),
             ),
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(16),
-              width: double.infinity,
-              decoration: BoxDecoration(
-                color: Colors.blue[50],
-                borderRadius: const BorderRadius.vertical(bottom: Radius.circular(16)),
+    );
+  }
+}
+
+class DischargingTab extends StatelessWidget {
+  final BatteryDataProvider provider;
+
+  const DischargingTab({super.key, required this.provider});
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 500),
+            padding: const EdgeInsets.all(16.0),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: provider.mode == 'discharging'
+                    ? [Colors.red[100]!, Colors.red[300]!]
+                    : [Colors.grey[100]!, Colors.grey[300]!],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
               ),
-              child: Text(
-                'Charging Section',
-                style: Theme.of(context).textTheme.headlineMedium,
-              ),
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.grey.withOpacity(0.5),
+                  spreadRadius: 2,
+                  blurRadius: 5,
+                  offset: const Offset(0, 3),
+                ),
+              ],
             ),
-            const SizedBox(height: 16),
-            _buildStatCard(
-              'Charge Voltage',
-              '${chargeV.toStringAsFixed(2)} V',
-              Icons.battery_charging_full,
-              Colors.blue,
+            child: Row(
+              children: [
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 500),
+                  child: Icon(
+                    Icons.battery_alert,
+                    size: 40,
+                    color: provider.mode == 'discharging' ? Colors.red : Colors.grey,
+                    key: ValueKey(provider.mode),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Discharging Status: ${provider.mode == 'discharging' ? 'Active' : 'Inactive'}',
+                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    ),
+                    Text('Battery Voltage: ${provider.batteryV.toStringAsFixed(2)} V'),
+                    Text('Load Current: ${provider.loadCurrentmA.toStringAsFixed(1)} mA'),
+                    Text('Capacity: ${provider.capacitymAh.toStringAsFixed(0)} mAh'),
+                    Text('Remaining Time: ${provider.remainingTimeH.toStringAsFixed(1)} h'),
+                  ],
+                ),
+              ],
             ),
-            _buildStatCard(
-              'Charge Current',
-              '${chargeCurrent.toStringAsFixed(1)} mA',
-              Icons.electric_bolt,
-              Colors.orange,
-            ),
-            _buildStatCard(
-              'Capacity',
-              '${capacity.toStringAsFixed(0)} mAh',
-              Icons.battery_std,
-              Colors.green,
-            ),
-            const SizedBox(height: 16),
-            _buildChartContainer(
-              'Capacity vs Time',
+          ),
+          const SizedBox(height: 20),
+          const Text(
+            'Capacity vs. Time',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          ),
+          SizedBox(
+            height: 200,
+            child: LineChart(
               LineChartData(
-                gridData: const FlGridData(show: true, drawVerticalLine: false),
+                gridData: FlGridData(show: true),
                 titlesData: FlTitlesData(
                   leftTitles: AxisTitles(
-                    sideTitles: SideTitles(
-                      showTitles: true,
-                      reservedSize: 40,
-                      getTitlesWidget: (value, meta) => Text(
-                        '${value.toInt()} mAh',
-                        style: const TextStyle(fontSize: 12, color: Colors.black87),
-                      ),
-                    ),
+                    sideTitles: SideTitles(showTitles: true, reservedSize: 40),
                   ),
                   bottomTitles: AxisTitles(
-                    sideTitles: SideTitles(
-                      showTitles: true,
-                      getTitlesWidget: (value, meta) => Text(
-                        '${value.toInt()} s',
-                        style: const TextStyle(fontSize: 12, color: Colors.black87),
-                      ),
-                    ),
+                    sideTitles: SideTitles(showTitles: true, reservedSize: 30),
+                    axisNameWidget: const Text('Time (h)'),
                   ),
-                  topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                  rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
                 ),
-                borderData: FlBorderData(show: true, border: Border.all(color: Colors.grey[300]!)),
-                minX: chargeData.isNotEmpty ? chargeData.length > 50 ? chargeData.length - 50 : 0 : 0,
-                maxY: 5000, // Adjust based on battery capacity
+                borderData: FlBorderData(show: true),
                 lineBarsData: [
                   LineChartBarData(
-                    spots: chargeData
-                        .asMap()
-                        .entries
-                        .map((e) => FlSpot(e.key.toDouble(), e.value['capacity']))
-                        .toList(),
-                    isCurved: true,
-                    color: Colors.blue,
-                    barWidth: 3,
-                    dotData: const FlDotData(show: false),
-                    belowBarData: BarAreaData(
-                      show: true,
-                      color: Colors.blue.withOpacity(0.2),
-                    ),
-                  ),
-                ],
-              ),
-              Colors.blue,
-            ),
-            const SizedBox(height: 16),
-            _buildChartContainer(
-              'Voltage vs Capacity',
-              LineChartData(
-                gridData: const FlGridData(show: true, drawVerticalLine: false),
-                titlesData: FlTitlesData(
-                  leftTitles: AxisTitles(
-                    sideTitles: SideTitles(
-                      showTitles: true,
-                      reservedSize: 40,
-                      getTitlesWidget: (value, meta) => Text(
-                        '${value.toStringAsFixed(1)} V',
-                        style: const TextStyle(fontSize: 12, color: Colors.black87),
-                      ),
-                    ),
-                  ),
-                  bottomTitles: AxisTitles(
-                    sideTitles: SideTitles(
-                      showTitles: true,
-                      getTitlesWidget: (value, meta) => Text(
-                        '${value.toInt()} mAh',
-                        style: const TextStyle(fontSize: 12, color: Colors.black87),
-                      ),
-                    ),
-                  ),
-                  topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                  rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                ),
-                borderData: FlBorderData(show: true, border: Border.all(color: Colors.grey[300]!)),
-                minY: 0,
-                maxY: 5, // Adjust based on expected voltage range
-                lineBarsData: [
-                  LineChartBarData(
-                    spots: chargeData
-                        .asMap()
-                        .entries
-                        .map((e) => FlSpot(e.value['capacity'], e.value['voltage']))
-                        .toList(),
+                    spots: provider.capacityVsTime,
                     isCurved: true,
                     color: Colors.red,
-                    barWidth: 3,
-                    dotData: const FlDotData(show: false),
-                    belowBarData: BarAreaData(
-                      show: true,
-                      color: Colors.red.withOpacity(0.2),
-                    ),
+                    dotData: FlDotData(show: false),
                   ),
                 ],
               ),
-              Colors.red,
             ),
-            const SizedBox(height: 16),
-          ],
-        ),
+          ),
+          const SizedBox(height: 20),
+          const Text(
+            'Voltage vs. Capacity',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          ),
+          SizedBox(
+            height: 200,
+            child: LineChart(
+              LineChartData(
+                gridData: FlGridData(show: true),
+                titlesData: FlTitlesData(
+                  leftTitles: AxisTitles(
+                    sideTitles: SideTitles(showTitles: true, reservedSize: 40),
+                  ),
+                  bottomTitles: AxisTitles(
+                    sideTitles: SideTitles(showTitles: true, reservedSize: 30),
+                    axisNameWidget: const Text('Capacity (mAh)'),
+                  ),
+                ),
+                borderData: FlBorderData(show: true),
+                lineBarsData: [
+                  LineChartBarData(
+                    spots: provider.voltageVsCapacity,
+                    isCurved: true,
+                    color: Colors.red,
+                    dotData: FlDotData(show: false),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
