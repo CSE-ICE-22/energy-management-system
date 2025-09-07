@@ -129,7 +129,7 @@ class _BatteryMonitorHomeState extends State<BatteryMonitorHome> {
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 3,
+      length: 2,
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Battery Monitor'),
@@ -152,10 +152,6 @@ class _BatteryMonitorHomeState extends State<BatteryMonitorHome> {
               Tab(
                 icon: Icon(Icons.battery_alert, color: Colors.red),
                 text: 'Discharging',
-              ),
-              Tab(
-                icon: Icon(Icons.analytics, color: Colors.purple),
-                text: 'Predict',
               ),
             ],
           ),
@@ -189,51 +185,31 @@ class _BatteryMonitorHomeState extends State<BatteryMonitorHome> {
         ),
         body: Consumer<BatteryDataProvider>(
           builder: (context, provider, child) {
-            return TabBarView(
-              children: [
-                provider.connectionStatus == 'Connected'
-                    ? ChargingTab(provider: provider)
-                    : Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const SpinKitCircle(color: Colors.blue, size: 50.0),
-                            const SizedBox(height: 20),
-                            Text(
-                              provider.connectionStatus,
-                              style: const TextStyle(fontSize: 18, color: Colors.red),
-                            ),
-                            const SizedBox(height: 20),
-                            ElevatedButton(
-                              onPressed: () => provider.connect(),
-                              child: const Text('Retry Connection'),
-                            ),
-                          ],
+            return provider.connectionStatus == 'Connected'
+                ? TabBarView(
+                    children: [
+                      ChargingTab(provider: provider),
+                      DischargingTab(provider: provider),
+                    ],
+                  )
+                : Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const SpinKitCircle(color: Colors.blue, size: 50.0),
+                        const SizedBox(height: 20),
+                        Text(
+                          provider.connectionStatus,
+                          style: const TextStyle(fontSize: 18, color: Colors.red),
                         ),
-                      ),
-                provider.connectionStatus == 'Connected'
-                    ? DischargingTab(provider: provider)
-                    : Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const SpinKitCircle(color: Colors.blue, size: 50.0),
-                            const SizedBox(height: 20),
-                            Text(
-                              provider.connectionStatus,
-                              style: const TextStyle(fontSize: 18, color: Colors.red),
-                            ),
-                            const SizedBox(height: 20),
-                            ElevatedButton(
-                              onPressed: () => provider.connect(),
-                              child: const Text('Retry Connection'),
-                            ),
-                          ],
+                        const SizedBox(height: 20),
+                        ElevatedButton(
+                          onPressed: () => provider.connect(),
+                          child: const Text('Retry Connection'),
                         ),
-                      ),
-                PredictTab(provider: provider),
-              ],
-            );
+                      ],
+                    ),
+                  );
           },
         ),
       ),
@@ -487,209 +463,6 @@ class DischargingTab extends StatelessWidget {
                     spots: provider.voltageVsCapacity,
                     isCurved: true,
                     color: Colors.red,
-                    dotData: FlDotData(show: false),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class PredictTab extends StatefulWidget {
-  final BatteryDataProvider provider;
-
-  const PredictTab({super.key, required this.provider});
-
-  @override
-  _PredictTabState createState() => _PredictTabState();
-}
-
-class _PredictTabState extends State<PredictTab> {
-  final TextEditingController _voltageController = TextEditingController();
-  final TextEditingController _currentController = TextEditingController();
-  double _aiPredictedTimeH = 0.0;
-  List<FlSpot> _aiVoltageVsCapacity = [];
-
-  void _predictRemainingTime() {
-    // Placeholder for AI prediction logic
-    setState(() {
-      // Example: Simple placeholder calculation (to be replaced with actual AI logic)
-      double voltage = double.tryParse(_voltageController.text) ?? 0.0;
-      double current = double.tryParse(_currentController.text) ?? 0.0;
-      if (voltage > 0 && current > 0) {
-        _aiPredictedTimeH = widget.provider.capacitymAh / current; // Simplified example
-        _aiVoltageVsCapacity.add(FlSpot(widget.provider.capacitymAh, voltage));
-        if (_aiVoltageVsCapacity.length > widget.provider._maxDataPoints) {
-          _aiVoltageVsCapacity.removeAt(0);
-        }
-      }
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    double systematicVoltage = widget.provider.batteryV * 40; // INA219 x 40 for Systematic Predict
-
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Systematic Predict Block
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 500),
-            padding: const EdgeInsets.all(16.0),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [Colors.purple[100]!, Colors.purple[300]!],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(12),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.grey.withOpacity(0.5),
-                  spreadRadius: 2,
-                  blurRadius: 5,
-                  offset: const Offset(0, 3),
-                ),
-              ],
-            ),
-            child: Row(
-              children: [
-                AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 500),
-                  child: Icon(
-                    Icons.science,
-                    size: 40,
-                    color: Colors.purple[700],
-                    key: ValueKey('systematic'),
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Systematic Predict',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                    ),
-                    Text('Voltage (INA219 x 40): ${systematicVoltage.toStringAsFixed(2)} V'),
-                    Text('Remaining Time: ${widget.provider.remainingTimeH.toStringAsFixed(1)} h'),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 20),
-          // AI Predict Block
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 500),
-            padding: const EdgeInsets.all(16.0),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [Colors.teal[100]!, Colors.teal[300]!],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(12),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.grey.withOpacity(0.5),
-                  spreadRadius: 2,
-                  blurRadius: 5,
-                  offset: const Offset(0, 3),
-                ),
-              ],
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Icon(
-                      Icons.auto_awesome,
-                      size: 40,
-                      color: Colors.teal[700],
-                    ),
-                    const SizedBox(width: 16),
-                    const Text(
-                      'AI Predict',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: _voltageController,
-                  decoration: InputDecoration(
-                    labelText: 'Voltage (V)',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    filled: true,
-                    fillColor: Colors.white,
-                  ),
-                  keyboardType: TextInputType.number,
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: _currentController,
-                  decoration: InputDecoration(
-                    labelText: 'Current Draw (mA)',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    filled: true,
-                    fillColor: Colors.white,
-                  ),
-                  keyboardType: TextInputType.number,
-                ),
-                const SizedBox(height: 10),
-                ElevatedButton(
-                  onPressed: _predictRemainingTime,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.teal[700],
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                  child: const Text('Predict'),
-                ),
-                const SizedBox(height: 10),
-                Text('AI Predicted Remaining Time: ${_aiPredictedTimeH.toStringAsFixed(1)} h'),
-              ],
-            ),
-          ),
-          const SizedBox(height: 20),
-          const Text(
-            'AI Voltage vs. Capacity',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-          ),
-          SizedBox(
-            height: 200,
-            child: LineChart(
-              LineChartData(
-                gridData: FlGridData(show: true),
-                titlesData: FlTitlesData(
-                  leftTitles: AxisTitles(
-                    sideTitles: SideTitles(showTitles: true, reservedSize: 40),
-                  ),
-                  bottomTitles: AxisTitles(
-                    sideTitles: SideTitles(showTitles: true, reservedSize: 30),
-                    axisNameWidget: const Text('Capacity (mAh)'),
-                  ),
-                ),
-                borderData: FlBorderData(show: true),
-                lineBarsData: [
-                  LineChartBarData(
-                    spots: _aiVoltageVsCapacity,
-                    isCurved: true,
-                    color: Colors.teal,
                     dotData: FlDotData(show: false),
                   ),
                 ],
