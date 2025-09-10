@@ -1,190 +1,134 @@
-#include <WiFi.h>
-#include <WebServer.h>
-#include <WebSocketsServer.h>
 #include <Wire.h>
 #include <Adafruit_INA219.h>
-#include <Adafruit_SSD1306.h>
+#include <ArduinoBLE.h>
 #include <ArduinoJson.h>
 
-// WiFi AP Credentials
-#define AP_SSID "ESP32_AP"
-#define AP_PASSWORD "password123"
+// INA219 instances
+Adafruit_INA219 ina219_load(0x40);   // Discharging (load) sensor
+Adafruit_INA219 ina219_charge(0x41); // Charging sensor
 
-// Relay Pin
-#define RELAY_PIN 25
+// BLE Service and Characteristic
+BLEService batteryService("180F"); // Standard Battery Service UUID
+BLECharacteristic batteryDataChar("2A19", BLERead | BLENotify, 512); // Custom characteristic for JSON data
 
-// OLED Setup
-#define SCREEN_WIDTH 128
-#define SCREEN_HEIGHT 64
-#define OLED_RESET -1
-Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
-
-// INA219 Setup
-Adafruit_INA219 ina219_load(0x40);
-Adafruit_INA219 ina219_charge(0x41);
-
-// WebSocket Server
-WebSocketsServer webSocket = WebSocketsServer(81);
-
-float capacity_mAh = 3000.0;
+// Battery and timing variables
+float capacity_mAh = 3000.0; // Initial capacity
 unsigned long lastMillis = 0;
-bool isCharging = true;
-
-void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length) {
-  if (type == WStype_DISCONNECTED) {
-    Serial.printf("Client %u disconnected\n", num);
-  } else if (type == WStype_CONNECTED) {
-    Serial.printf("Client %u connected\n", num);
-  }
-}
+float battery_V = 0.0, load_current_mA = 0.0, charge_current_mA = 0.0;
 
 void setup() {
   Serial.begin(115200);
-  pinMode(RELAY_PIN, OUTPUT);
-  digitalWrite(RELAY_PIN, HIGH); // Start charging
+  while (!Serial) { delay(1); }
 
-  // Initialize I2C
+  // Initialize I2C (SDA=GPIO21, SCL=GPIO22)
   Wire.begin(21, 22);
 
-  // Initialize INA219s
+  // Initialize INA219 for discharging
   if (!ina219_load.begin()) {
-    Serial.println("INA219 (0x40) failed. Check: SDA->GPIO21, SCL->GPIO22, VCC->3V3, GND->GND, A0->GND, A1->GND");
-    while (1) delay(10);
+    Serial.println("Failed to find INA219 at 0x40");
+    while (1) { delay(10); }
   }
+
+  // Initialize INA219 for charging
   if (!ina219_charge.begin()) {
-    Serial.println("INA219 (0x41) failed. Check: SDA->GPIO21, SCL->GPIO22, VCC->3V3, GND->GND, A0->VCC, A1->GND");
-    while (1) delay(10);
+    Serial.println("Failed to find INA219 at 0x41");
+    while (1) { delay(10); }
   }
 
-  // Initialize OLED
-  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
-    Serial.println("SSD1306 failed. Check: SDA->GPIO21, SCL->GPIO22, VCC->3V3, GND->GND");
-    while (1) delay(10);
+  // Initialize BLE
+  if (!BLE.begin()) {
+    Serial.println("Failed to initialize BLE");
+    while (1) { delay(10); }
   }
-  display.clearDisplay();
-  display.setTextSize(1);
-  display.setTextColor(SSD1306_WHITE);
-  display.setCursor(0, 0);
-  display.println("System Ready");
-  display.display();
 
-  // Setup WiFi AP
-  WiFi.softAP(AP_SSID, AP_PASSWORD);
-  Serial.print("AP IP: ");
-  Serial.println(WiFi.softAPIP());
-
-  // Start WebSocket Server
-  webSocket.begin();
-  webSocket.onEvent(webSocketEvent);
+  // Set up BLE service
+  BLE.setLocalName("EnergyMonitor");
+  BLE.setAdvertisedService(batteryService);
+  batteryService.addCharacteristic(batteryDataChar);
+  BLE.addService(batteryService);
+  BLE.advertise();
+  Serial.println("BLE Peripheral started");
+  Serial.println("Format: Battery V | Load I | Charge I | Capacity | Time | Mode");
 }
 
 void loop() {
-  webSocket.loop();
+  // Wait for BLE central connection
+  BLEDevice central = BLE.central();
+  if (central) {
+    Serial.println("Connected to central: " + central.address());
+    while (central.connected()) {
+      unsigned long currentMillis = millis();
+      if (currentMillis - lastMillis >= 2000) { // Update every 2 seconds
+        lastMillis = currentMillis;
+        float delta_t = 2.0; // Seconds
 
-  unsigned long currentMillis = millis();
-  float delta_t = (currentMillis - lastMillis) / 1000.0;
-  lastMillis = currentMillis;
+        // Read discharging (load) data
+        float shunt_load_mV = ina219_load.getShuntVoltage_mV();
+        float bus_load_V = ina219_load.getBusVoltage_V();
+        load_current_mA = ina219_load.getCurrent_mA();
+        float power_load_mW = ina219_load.getPower_mW();
+        battery_V = bus_load_V + (shunt_load_mV / 1000.0);
 
-  // Read INA219 Data
-  float battery_V = 0.0;
-  float load_current_mA = 0.0;
-  float charge_V = 0.0;
-  float charge_current_mA = 0.0;
-  float remaining_time_h = 0.0;
+        // Read charging data
+        float shunt_charge_mV = ina219_charge.getShuntVoltage_mV();
+        float bus_charge_V = ina219_charge.getBusVoltage_V();
+        charge_current_mA = ina219_charge.getCurrent_mA();
+        float power_charge_mW = ina219_charge.getPower_mW();
 
-  // Read INA219 (0x40) only during discharging
-  if (!isCharging) {
-    float shunt_load_mV = ina219_load.getShuntVoltage_mV();
-    float bus_load_V = ina219_load.getBusVoltage_V();
-    load_current_mA = ina219_load.getCurrent_mA();
-    battery_V = bus_load_V + (shunt_load_mV / 1000.0);
-  }
+        // Mode detection
+        bool isDischarging = (load_current_mA > 5.0);
+        bool isCharging = (!isDischarging && charge_current_mA > 0.2);
+        String mode = isCharging ? "Charging" : isDischarging ? "Discharging" : "Idle";
 
-  // Read INA219 (0x41) only during charging
-  if (isCharging) {
-    float shunt_charge_mV = ina219_charge.getShuntVoltage_mV();
-    float bus_charge_V = ina219_charge.getBusVoltage_V();
-    charge_current_mA = ina219_charge.getCurrent_mA();
-    charge_V = bus_charge_V;
-    // Use INA219 (0x40) for battery voltage during charging
-    float shunt_load_mV = ina219_load.getShuntVoltage_mV();
-    float bus_load_V = ina219_load.getBusVoltage_V();
-    battery_V = bus_load_V + (shunt_load_mV / 1000.0);
-  }
+        // Update capacity
+        if (isCharging) {
+          capacity_mAh += (charge_current_mA * delta_t / 3600.0);
+          if (capacity_mAh > 5000) capacity_mAh = 5000;
+        } else if (isDischarging) {
+          capacity_mAh -= (load_current_mA * delta_t / 3600.0);
+          if (capacity_mAh < 0) capacity_mAh = 0;
+        }
 
-  // Relay Control
-  if (isCharging && battery_V >= 3.7) {
-    isCharging = false;
-    digitalWrite(RELAY_PIN, LOW); // Switch to discharging
-    Serial.println("Switching to DISCHARGING: battery_V >= 3.7V");
-  } else if (!isCharging && battery_V <= 3.0) {
-    isCharging = true;
-    digitalWrite(RELAY_PIN, HIGH); // Switch to charging
-    Serial.println("Switching to CHARGING: battery_V <= 3.0V");
-  }
+        // Calculate remaining time
+        float remaining_time_h = (load_current_mA > 0 && isDischarging) ? capacity_mAh / load_current_mA : 0.0;
 
-  // Explicitly set relay state
-  digitalWrite(RELAY_PIN, isCharging ? HIGH : LOW);
+        // Create JSON data
+        StaticJsonDocument<200> doc;
+        doc["battery_V"] = round(battery_V * 100) / 100.0;
+        doc["load_I_mA"] = round(load_current_mA * 100) / 100.0;
+        doc["load_shunt_mV"] = round(shunt_load_mV * 100) / 100.0;
+        doc["load_power_mW"] = round(power_load_mW * 100) / 100.0;
+        doc["charge_I_mA"] = round(charge_current_mA * 100) / 100.0;
+        doc["charge_shunt_mV"] = round(shunt_charge_mV * 100) / 100.0;
+        doc["charge_power_mW"] = round(power_charge_mW * 100) / 100.0;
+        doc["capacity_mAh"] = round(capacity_mAh * 100) / 100.0;
+        doc["remaining_time_h"] = round(remaining_time_h * 100) / 100.0;
+        doc["mode"] = mode;
 
-  // Debug Output
-  Serial.print("Battery Voltage: "); Serial.print(battery_V, 2); Serial.print(" V, Mode: ");
-  Serial.print(isCharging ? "Charging" : "Discharging");
-  Serial.print(", Relay: "); Serial.println(isCharging ? "HIGH (NO)" : "LOW (NC)");
-  if (isCharging) {
-    Serial.print("Charging - V: "); Serial.print(charge_V, 2); Serial.print(" V, I: ");
-    Serial.print(charge_current_mA, 1); Serial.println(" mA");
-  } else {
-    Serial.print("Discharging - V: "); Serial.print(battery_V, 2); Serial.print(" V, I: ");
-    Serial.print(load_current_mA, 1); Serial.println(" mA");
-  }
+        // Serialize JSON to string
+        char jsonBuffer[512];
+        serializeJson(doc, jsonBuffer);
 
-  // Update Capacity
-  if (isCharging) {
-    capacity_mAh += (charge_current_mA * delta_t / 3600.0);
-    if (capacity_mAh > 5000) capacity_mAh = 5000;
-  } else {
-    capacity_mAh -= (load_current_mA * delta_t / 3600.0);
-    if (capacity_mAh < 0) capacity_mAh = 0;
-    if (load_current_mA > 0) {
-      remaining_time_h = capacity_mAh / load_current_mA;
+        // Send over BLE
+        if (batteryDataChar.subscribed()) {
+          batteryDataChar.writeValue((uint8_t*)jsonBuffer, strlen(jsonBuffer));
+        }
+
+        // Serial output for debugging
+        Serial.print(battery_V, 2);
+        Serial.print(" V | ");
+        Serial.print(load_current_mA, 2);
+        Serial.print(" mA | ");
+        Serial.print(charge_current_mA, 2);
+        Serial.print(" mA | ");
+        Serial.print(capacity_mAh, 2);
+        Serial.print(" mAh | ");
+        Serial.print(remaining_time_h, 2);
+        Serial.print(" h | ");
+        Serial.println(mode);
+      }
+      delay(100); // Prevent tight loop
     }
+    Serial.println("Disconnected from central");
   }
-
-  // Create JSON Data for WebSocket
-  StaticJsonDocument<200> doc;
-  doc["mode"] = isCharging ? "charging" : "discharging";
-  doc["battery_V"] = battery_V;
-  if (isCharging) {
-    doc["charge_V"] = charge_V;
-    doc["charge_current_mA"] = charge_current_mA;
-  } else {
-    doc["load_current_mA"] = load_current_mA;
-    doc["remaining_time_h"] = remaining_time_h;
-  }
-  doc["capacity_mAh"] = capacity_mAh;
-  doc["timestamp"] = currentMillis / 1000.0;
-
-  // Send to WebSocket Clients
-  String json;
-  serializeJson(doc, json);
-  webSocket.broadcastTXT(json);
-
-  // Update OLED
-  display.clearDisplay();
-  display.setCursor(0, 0);
-  if (isCharging) {
-    display.println("Charging");
-    display.print("V: "); display.print(charge_V, 2); display.println(" V");
-    display.print("I: "); display.print(charge_current_mA, 1); display.println(" mA");
-    display.print("Cap: "); display.print((int)capacity_mAh); display.println(" mAh");
-  } else {
-    display.println("Discharging");
-    display.print("V: "); display.print(battery_V, 2); display.println(" V");
-    display.print("I: "); display.print(load_current_mA, 1); display.println(" mA");
-    display.print("Cap: "); display.print((int)capacity_mAh); display.println(" mAh");
-    display.print("Time: "); display.print(remaining_time_h, 1); display.println(" h");
-  }
-  display.display();
-
-  delay(2000);
 }
