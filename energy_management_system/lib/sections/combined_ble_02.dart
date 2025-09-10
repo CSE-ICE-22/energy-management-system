@@ -1,9 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
+import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:fl_chart/fl_chart.dart';
-import 'package:permission_handler/permission_handler.dart';
 
 void main() {
   runApp(const EnergyManagementApp());
@@ -20,6 +19,7 @@ class EnergyManagementApp extends StatelessWidget {
         primaryColor: const Color(0xFF1976D2),
         scaffoldBackgroundColor: Colors.white,
         textTheme: Theme.of(context).textTheme.apply(fontFamily: 'Roboto'),
+        // Removed tabBarTheme due to type mismatch error.
       ),
       home: const EnergyHomePage(),
     );
@@ -34,77 +34,133 @@ class EnergyHomePage extends StatefulWidget {
 }
 
 class _EnergyHomePageState extends State<EnergyHomePage> with SingleTickerProviderStateMixin {
+  // Removed invalid assignment; use FlutterBluePlus directly for static methods.
+  BluetoothDevice? device;
+  BluetoothCharacteristic? characteristic;
   List<Map<String, dynamic>> dataPoints = [];
   bool isConnected = false;
-  String connectionStatus = 'Disconnected';
   TabController? _tabController;
-  Timer? _timer;
-  final String esp32Ip = '192.168.4.1'; // Default AP IP; change for STA mode
+  String connectionStatus = 'Disconnected';
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
-    _requestPermissions();
-    _startFetchingData();
+    _startBluetoothScan();
   }
 
-  Future<void> _requestPermissions() async {
-    Map<Permission, PermissionStatus> statuses = await [
-      Permission.location, // Needed for Wi-Fi scanning on Android
-    ].request();
-    if (statuses[Permission.location]!.isDenied) {
+  Future<void> _startBluetoothScan() async {
+    try {
+      // Check Bluetooth status
+      final bool isOn = await FlutterBluePlus.isOn;
+      if (!isOn) {
+        setState(() {
+          connectionStatus = 'Bluetooth is off. Please turn it on.';
+        });
+        print("Bluetooth is off");
+        return;
+      }
+
       setState(() {
-        connectionStatus = 'Location permission denied. Please grant it.';
+        connectionStatus = 'Scanning for EnergyMonitor...';
       });
+
+      // Start scanning (Future<void>, no assignment)
+      await FlutterBluePlus.startScan(timeout: const Duration(seconds: 10));
+
+      // Listen for scan results
+      FlutterBluePlus.scanResults.listen((results) {
+        for (ScanResult r in results) {
+          if (r.device.name == "EnergyMonitor") {
+            setState(() {
+              device = r.device;
+              connectionStatus = 'Found EnergyMonitor. Connecting...';
+            });
+            FlutterBluePlus.stopScan();
+            _connectToDevice();
+            break;
+          }
+        }
+      }, onDone: () {
+        if (device == null) {
+          setState(() {
+            connectionStatus = 'Device not found. Retry?';
+          });
+        }
+      });
+    } catch (e) {
+      setState(() {
+        connectionStatus = 'Scan error: $e';
+      });
+      print("Bluetooth scan error: $e");
     }
   }
 
-  Future<void> _fetchData() async {
+  Future<void> _connectToDevice() async {
+    if (device == null) return;
     try {
-      final response = await http.get(Uri.parse('http://$esp32Ip/')).timeout(const Duration(seconds: 5));
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        setState(() {
-          isConnected = true;
-          connectionStatus = 'Connected to ESP32';
-          dataPoints.add(data);
-          if (dataPoints.length > 50) dataPoints.removeAt(0); // Keep last 50 points
-        });
-      } else {
-        setState(() {
-          isConnected = false;
-          connectionStatus = 'Failed to fetch data: HTTP ${response.statusCode}';
-        });
+      // Connect to device (Future<void>)
+      await device!.connect(timeout: const Duration(seconds: 15));
+      setState(() {
+        isConnected = true;
+        connectionStatus = 'Connected to ${device!.name}';
+      });
+
+      // Discover services (returns Future<List<BluetoothService>>)
+      final List<BluetoothService> services = await device!.discoverServices();
+      for (final BluetoothService service in services) {
+        if (service.uuid.toString() == "0000180f-0000-1000-8000-00805f9b34fb") {
+          for (final BluetoothCharacteristic c in service.characteristics) {
+            if (c.uuid.toString() == "00002a19-0000-1000-8000-00805f9b34fb") {
+              characteristic = c;
+              // Enable notifications (Future<void>)
+              await c.setNotifyValue(true);
+              c.value.listen((value) {
+                if (value.isNotEmpty) {
+                  final String jsonStr = String.fromCharCodes(value);
+                  try {
+                    final Map<String, dynamic> data = jsonDecode(jsonStr);
+                    setState(() {
+                      dataPoints.add(data);
+                      if (dataPoints.length > 50) dataPoints.removeAt(0); // Keep last 50 points
+                    });
+                  } catch (e) {
+                    print("JSON parse error: $e");
+                  }
+                }
+              });
+              break;
+            }
+          }
+          break;
+        }
       }
     } catch (e) {
       setState(() {
         isConnected = false;
         connectionStatus = 'Connection error: $e';
       });
+      print("BLE connection error: $e");
     }
   }
 
-  void _startFetchingData() {
-    _timer?.cancel();
-    _timer = Timer.periodic(const Duration(seconds: 10), (timer) {
-      _fetchData();
-    });
-  }
-
-  void _stopFetchingData() {
-    _timer?.cancel();
-    setState(() {
-      isConnected = false;
-      connectionStatus = 'Disconnected';
-      dataPoints.clear();
-    });
+  Future<void> _disconnect() async {
+    if (device != null) {
+      await device!.disconnect(); // Future<void>
+      setState(() {
+        isConnected = false;
+        device = null;
+        characteristic = null;
+        dataPoints.clear();
+        connectionStatus = 'Disconnected';
+      });
+    }
   }
 
   @override
   void dispose() {
-    _timer?.cancel();
     _tabController?.dispose();
+    _disconnect();
     super.dispose();
   }
 
@@ -148,9 +204,9 @@ class _EnergyHomePageState extends State<EnergyHomePage> with SingleTickerProvid
         ],
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: isConnected ? _stopFetchingData : _startFetchingData,
+        onPressed: isConnected ? _disconnect : _startBluetoothScan,
         backgroundColor: isConnected ? const Color(0xFFF44336) : const Color(0xFF1976D2),
-        child: Icon(isConnected ? Icons.stop : Icons.play_arrow),
+        child: Icon(isConnected ? Icons.bluetooth_disabled : Icons.bluetooth),
       ),
     );
   }
@@ -265,6 +321,7 @@ class _PredictionTabState extends State<PredictionTab> {
     final double? voltage = double.tryParse(_voltageController.text);
     final double? current = double.tryParse(_currentController.text);
     if (voltage != null && current != null && current > 0) {
+      // Simple linear model: time = capacity / current, adjusted by voltage
       final double capacity = 3000.0 * (voltage / 4.2); // Scale capacity by voltage ratio
       setState(() {
         remainingTime = capacity / current;
@@ -400,7 +457,7 @@ Widget _buildLineChart(
             spots: dataPoints.asMap().entries.map((e) {
               final int index = e.key;
               final data = e.value;
-              final double x = xKey != null ? (data[xKey]?.toDouble() ?? 0.0) : index.toDouble() * 10.0; // 10s interval
+              final double x = xKey != null ? (data[xKey]?.toDouble() ?? 0.0) : index.toDouble() * 2.0; // 2s interval
               final double y = data[yKey]?.toDouble() ?? 0.0;
               return FlSpot(x, y);
             }).toList(),
