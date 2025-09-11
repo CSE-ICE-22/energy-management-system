@@ -19,14 +19,24 @@ Adafruit_INA219 ina219_charge(0x41);
 Preferences preferences;
 
 // Battery capacity (mAh)
-float capacity_mAh = 3000.0; // Initial assumption, updated from NVS
+float capacity_mAh = 0.0; // Start at 0
 unsigned long lastMillis = 0;
+
+// LED pins (adjust if different for your ESP32 board)
+#define BLUE_LED 2  // Built-in blue LED
+#define RED_LED  4  // Built-in red LED
 
 void setup() {
   Serial.begin(115200);
   while (!Serial) {
     delay(1); // Wait for Serial Monitor
   }
+  
+  // Initialize LEDs
+  pinMode(BLUE_LED, OUTPUT);
+  pinMode(RED_LED, OUTPUT);
+  digitalWrite(BLUE_LED, LOW); // Off initially
+  digitalWrite(RED_LED, LOW);  // Off initially
   
   // Initialize I2C with SDA=GPIO21, SCL=GPIO22
   Wire.begin(21, 22);
@@ -54,8 +64,8 @@ void setup() {
   
   // Load stored capacity from NVS
   preferences.begin("battery", false);
-  capacity_mAh = preferences.getFloat("capacity", 3000.0); // Default to 3000 if not set
-  if (capacity_mAh < 0 || capacity_mAh > 5000) capacity_mAh = 3000.0; // Clamp to reasonable range
+  capacity_mAh = preferences.getFloat("capacity", 0.0); // Default to 0 if not set
+  if (capacity_mAh < 0 || capacity_mAh > 5000) capacity_mAh = 0.0; // Clamp to reasonable range
   
   // Clear OLED and show startup message
   display.clearDisplay();
@@ -95,7 +105,7 @@ void loop() {
   float current_charge_mA = ina219_charge.getCurrent_mA();
   
   // Charge voltage
-  float charge_V = bus_charge_V;
+  float charge_V = bus_charge_V + (shunt_charge_mV / 1000.0) - 0.45;
   
   // Diagnostic output
   Serial.print("Load INA219 Raw: Shunt=");
@@ -115,18 +125,29 @@ void loop() {
   
   // Mode detection: Prioritize discharging if load current is detected
   bool isDischarging = (current_load_mA > 5.0); // Discharging if load current > 5 mA
-  bool isCharging = (!isDischarging && current_charge_mA > 1.0 && bus_charge_V > 1.0); // Charging if no load, charge current > 1 mA, voltage > 4V
-  String mode = isCharging ? "Charging" : isDischarging ? "Discharging" : "Idle";
+  bool isCharging = (!isDischarging && current_charge_mA > 1.0 && bus_charge_V > 1.0); // Charging if no load, charge current > 1 mA, voltage > 1V
+  
+  // LED control
+  digitalWrite(BLUE_LED, (isCharging && battery_V >= 3.7) ? HIGH : LOW); // Blue LED on at 3.7V during charging
+  digitalWrite(RED_LED, (isDischarging && battery_V <= 3.3) ? HIGH : LOW); // Red LED on at 3.3V during discharging
   
   // Capacity and remaining time
   float remaining_time_h = 0.0;
-  if (isCharging) {
-    // Charging mode: calculate capacity
+  String mode;
+  
+  if (isCharging && battery_V < 3.7) {
+    mode = "Charging";
+    // Charging mode: calculate capacity starting from 0
     capacity_mAh += (current_charge_mA * delta_t / 3600.0); // mAh
     if (capacity_mAh < 0) capacity_mAh = 0;
     if (capacity_mAh > 5000) capacity_mAh = 5000; // Adjust max based on battery
     preferences.putFloat("capacity", capacity_mAh); // Store in NVS
+  } else if (isCharging && battery_V >= 3.7) {
+    mode = "Charge Complete";
+    // Stop incrementing capacity
+    preferences.putFloat("capacity", capacity_mAh); // Store final capacity
   } else if (isDischarging) {
+    mode = "Discharging";
     // Discharging mode: update capacity and calculate remaining time
     capacity_mAh -= (current_load_mA * delta_t / 3600.0); // Update capacity
     if (capacity_mAh < 0) capacity_mAh = 0;
@@ -134,6 +155,8 @@ void loop() {
     if (load_current_mA > 0) {
       remaining_time_h = capacity_mAh / load_current_mA; // Hours
     }
+  } else {
+    mode = "Idle";
   }
   
   // Serial output
@@ -154,7 +177,7 @@ void loop() {
   display.clearDisplay();
   display.setTextSize(1);
   display.setCursor(0, 0);
-  if (isCharging) {
+  if (isCharging && battery_V < 3.7) {
     display.println("Charging Mode");
     display.print("Charge V: ");
     display.print(charge_V, 2);
@@ -164,6 +187,15 @@ void loop() {
     display.print(current_charge_mA, 1);
     display.println(" mA");
     display.setCursor(0, 32);
+    display.print("Cap: ");
+    display.print((int)capacity_mAh);
+    display.println(" mAh");
+  } else if (isCharging && battery_V >= 3.7) {
+    display.println("Charge Complete");
+    display.print("Charge V: ");
+    display.print(charge_V, 2);
+    display.println(" V");
+    display.setCursor(0, 16);
     display.print("Cap: ");
     display.print((int)capacity_mAh);
     display.println(" mAh");
@@ -177,6 +209,10 @@ void loop() {
     display.print(load_current_mA, 1);
     display.println(" mA");
     display.setCursor(0, 32);
+    display.print("Cap: ");
+    display.print((int)capacity_mAh);
+    display.println(" mAh");
+    display.setCursor(0, 48);
     display.print("Time: ");
     display.print(remaining_time_h, 1);
     display.println(" h");
@@ -184,9 +220,9 @@ void loop() {
     display.println("Idle Mode");
     display.println("No activity");
     display.setCursor(0, 32);
-    display.print("Charge I: ");
-    display.print(current_charge_mA, 1);
-    display.println(" mA");
+    display.print("Cap: ");
+    display.print((int)capacity_mAh);
+    display.println(" mAh");
   }
   display.display();
   
