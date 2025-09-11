@@ -204,7 +204,7 @@ class _EnergyHomePageState extends State<EnergyHomePage> with SingleTickerProvid
                   children: [
                     ChargingTab(dataPoints: dataPoints),
                     DischargingTab(dataPoints: dataPoints),
-                    const PredictionTab(),
+                    PredictionTab(dataPoints: dataPoints),
                   ],
                 ),
               ),
@@ -322,7 +322,8 @@ class DischargingTab extends StatelessWidget {
 }
 
 class PredictionTab extends StatefulWidget {
-  const PredictionTab({Key? key}) : super(key: key);
+  final List<Map<String, dynamic>> dataPoints;
+  const PredictionTab({Key? key, required this.dataPoints}) : super(key: key);
 
   @override
   _PredictionTabState createState() => _PredictionTabState();
@@ -333,6 +334,7 @@ class _PredictionTabState extends State<PredictionTab> {
   final _currentController = TextEditingController();
   final _capacityController = TextEditingController();
   double? remainingTime;
+  bool _showSystematicPrediction = false;
 
   void _calculateRemainingTime() {
     final double? voltage = double.tryParse(_voltageController.text);
@@ -349,6 +351,12 @@ class _PredictionTabState extends State<PredictionTab> {
     }
   }
 
+  void _toggleSystematicPrediction() {
+    setState(() {
+      _showSystematicPrediction = !_showSystematicPrediction;
+    });
+  }
+
   @override
   void dispose() {
     _voltageController.dispose();
@@ -359,7 +367,8 @@ class _PredictionTabState extends State<PredictionTab> {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
+    final Map<String, dynamic> latestData = widget.dataPoints.isNotEmpty ? widget.dataPoints.last : {};
+    return SingleChildScrollView(
       padding: const EdgeInsets.all(16.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -374,6 +383,40 @@ class _PredictionTabState extends State<PredictionTab> {
             ),
           ).animate().fadeIn(duration: 600.ms),
           const SizedBox(height: 20),
+          Text(
+            'Systematic Prediction',
+            style: GoogleFonts.poppins(
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
+              color: Colors.white70,
+            ),
+          ).animate().fadeIn(duration: 800.ms),
+          const SizedBox(height: 12),
+          ElevatedButton(
+            onPressed: _toggleSystematicPrediction,
+            child: Text(_showSystematicPrediction ? 'Hide' : 'Use'),
+          ).animate().fadeIn(duration: 1000.ms).scale(),
+          if (_showSystematicPrediction) ...[
+            const SizedBox(height: 12),
+            _buildDataCard('Current INA Voltage', latestData['battery_V']?.toStringAsFixed(2) ?? 'N/A', 'V', Icons.bolt_rounded, Colors.orange[600]!)
+                .animate().fadeIn(duration: 1200.ms),
+            _buildDataCard('Current Flow', latestData['load_I_mA']?.toStringAsFixed(2) ?? 'N/A', 'mA', Icons.battery_alert_rounded, Colors.orange[600]!)
+                .animate().fadeIn(duration: 1400.ms),
+            _buildDataCard('Capacity', latestData['capacity_mAh']?.toStringAsFixed(0) ?? 'N/A', 'mAh', Icons.battery_full_rounded, Colors.orange[600]!)
+                .animate().fadeIn(duration: 1600.ms),
+            _buildDataCard('Remaining Time', latestData['remaining_time_h']?.toStringAsFixed(2) ?? 'N/A', 'h', Icons.timer_rounded, Colors.orange[600]!)
+                .animate().fadeIn(duration: 1800.ms),
+          ],
+          const SizedBox(height: 20),
+          Text(
+            'Non-Systematic Prediction',
+            style: GoogleFonts.poppins(
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
+              color: Colors.white70,
+            ),
+          ).animate().fadeIn(duration: 2000.ms),
+          const SizedBox(height: 12),
           TextField(
             controller: _voltageController,
             decoration: InputDecoration(
@@ -389,7 +432,7 @@ class _PredictionTabState extends State<PredictionTab> {
             ),
             keyboardType: TextInputType.number,
             style: GoogleFonts.poppins(color: Colors.white),
-          ).animate().fadeIn(duration: 800.ms),
+          ).animate().fadeIn(duration: 2200.ms),
           const SizedBox(height: 12),
           TextField(
             controller: _currentController,
@@ -406,7 +449,7 @@ class _PredictionTabState extends State<PredictionTab> {
             ),
             keyboardType: TextInputType.number,
             style: GoogleFonts.poppins(color: Colors.white),
-          ).animate().fadeIn(duration: 1000.ms),
+          ).animate().fadeIn(duration: 2400.ms),
           const SizedBox(height: 12),
           TextField(
             controller: _capacityController,
@@ -423,21 +466,21 @@ class _PredictionTabState extends State<PredictionTab> {
             ),
             keyboardType: TextInputType.number,
             style: GoogleFonts.poppins(color: Colors.white),
-          ).animate().fadeIn(duration: 1200.ms),
+          ).animate().fadeIn(duration: 2600.ms),
           const SizedBox(height: 20),
           ElevatedButton(
             onPressed: _calculateRemainingTime,
             child: const Text('Calculate'),
-          ).animate().fadeIn(duration: 1400.ms).scale(),
+          ).animate().fadeIn(duration: 2800.ms).scale(),
           const SizedBox(height: 20),
           if (remainingTime != null)
             _buildDataCard('Remaining Time', remainingTime!.toStringAsFixed(2), 'h', Icons.timer_rounded, Colors.orange[600]!)
-                .animate().fadeIn(duration: 1600.ms)
+                .animate().fadeIn(duration: 3000.ms)
           else
             Text(
               'Enter valid voltage, current, and capacity to predict.',
               style: GoogleFonts.poppins(fontSize: 16, color: Colors.white70),
-            ).animate().fadeIn(duration: 1600.ms),
+            ).animate().fadeIn(duration: 3000.ms),
         ],
       ),
     );
