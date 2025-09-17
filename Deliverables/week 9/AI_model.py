@@ -4,9 +4,9 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
-import matplotlib.pyplot as plt  # Optional for plotting
+import matplotlib.pyplot as plt
 
-# Step 1: Data Collection - Hardcoded from datasets (tuples of (time, voltage))
+# Step 1: Data Collection - Hardcoded dataset (same as provided)
 battery_data = {
     0.001: [(0, 4.170), (72001, 4.141), (144002, 4.119), (216003, 4.101), (288004, 4.088), (360005, 4.078), (432006, 4.070), (504007, 4.065), (576008, 4.060), (648009, 4.057), (720010, 4.054), (792011, 4.052), (864012, 4.049), (936013, 4.046), (1008014, 4.042), (1080015, 4.039), (1152016, 4.034), (1224017, 4.029), (1296018, 4.023), (1368019, 4.017), (1440020, 4.009), (1512021, 4.002), (1584022, 3.993), (1656023, 3.984), (1728024, 3.975), (1800025, 3.965), (1872026, 3.955), (1944027, 3.944), (2016028, 3.933), (2088029, 3.922), (2160030, 3.911), (2232031, 3.900), (2304032, 3.889), (2376033, 3.878), (2448034, 3.867), (2520035, 3.856), (2592036, 3.845), (2664037, 3.834), (2736038, 3.823), (2808039, 3.813), (2880040, 3.802), (2952041, 3.792), (3024042, 3.782), (3096043, 3.772), (3168044, 3.763), (3240045, 3.753), (3312046, 3.744), (3384047, 3.734), (3456048, 3.725), (3528049, 3.716), (3600050, 3.707), (3672051, 3.697), (3744052, 3.688), (3816053, 3.679), (3888054, 3.670), (3960055, 3.660), (4032056, 3.651), (4104057, 3.641), (4176058, 3.631), (4248059, 3.622), (4320060, 3.611), (4392061, 3.601), (4464062, 3.591), (4536063, 3.580), (4608064, 3.570), (4680065, 3.559), (4752066, 3.548), (4824067, 3.536), (4896068, 3.525), (4968069, 3.513), (5040070, 3.501), (5112071, 3.489), (5184072, 3.477), (5256073, 3.465), (5328074, 3.452), (5400075, 3.439), (5472076, 3.426), (5544077, 3.413), (5616078, 3.399), (5688079, 3.385), (5760080, 3.370), (5832081, 3.356), (5904082, 3.340), (5976083, 3.324), (6048084, 3.308), (6120085, 3.291), (6192086, 3.272), (6264087, 3.253), (6336088, 3.233), (6408089, 3.212), (6480090, 3.189), (6552091, 3.165), (6624092, 3.139), (6696093, 3.112), (6768094, 3.082), (6840095, 3.050), (6912096, 3.016), (6984097, 2.979), (7056098, 2.939), (7128099, 2.896), (7200100, 0.000)],
     0.01: [(0, 4.170), (7201, 4.141), (14402, 4.118), (21603, 4.101), (28804, 4.088), (36005, 4.077), (43206, 4.070), (50407, 4.064), (57608, 4.060), (64809, 4.057), (72010, 4.054), (79211, 4.051), (86412, 4.048), (93613, 4.045), (100814, 4.042), (108015, 4.038), (115216, 4.034), (122417, 4.028), (129618, 4.023), (136819, 4.016), (144020, 4.009), (151221, 4.001), (158422, 3.993), (165623, 3.984), (172824, 3.974), (180025, 3.964), (187226, 3.954), (194427, 3.944), (201628, 3.933), (208829, 3.922), (216030, 3.911), (223231, 3.900), (230432, 3.888), (237633, 3.877), (244834, 3.866), (252035, 3.855), (259236, 3.844), (266437, 3.833), (273638, 3.823), (280839, 3.812), (288040, 3.802), (295241, 3.792), (302442, 3.782), (309643, 3.772), (316844, 3.762), (324045, 3.753), (331246, 3.743), (338447, 3.734), (345648, 3.725), (352849, 3.715), (360050, 3.706), (367251, 3.697), (374452, 3.688), (381653, 3.678), (388854, 3.669), (396055, 3.660), (403256, 3.650), (410457, 3.641), (417658, 3.631), (424859, 3.621), (432060, 3.611), (439261, 3.601), (446462, 3.590), (453663, 3.580), (460864, 3.569), (468065, 3.558), (475266, 3.547), (482467, 3.536), (489668, 3.524), (496869, 3.513), (504070, 3.501), (511271, 3.489), (518472, 3.477), (525673, 3.464), (532874, 3.452), (540075, 3.439), (547276, 3.426), (554477, 3.412), (561678, 3.398), (568879, 3.384), (576080, 3.370), (583281, 3.355), (590482, 3.340), (597683, 3.324), (604884, 3.307), (612085, 3.290), (619286, 3.272), (626487, 3.253), (633688, 3.233), (640889, 3.211), (648090, 3.189), (655291, 3.164), (662492, 3.139), (669693, 3.111), (676894, 3.081), (684095, 3.049), (691296, 3.015), (698497, 2.978), (705698, 2.938), (712899, 2.895), (720100, 0.000)],
@@ -35,7 +35,7 @@ full_df = pd.concat(df_list, ignore_index=True)
 
 # Step 2: Clean Data
 full_df = full_df.dropna()
-full_df = full_df[full_df['voltage'] > 0]  # Optional: Exclude 0 V
+full_df = full_df[full_df['voltage'] > 0]  # Exclude 0 V
 full_df = full_df.drop_duplicates(subset=['voltage', 'current', 'remaining_time'])
 print(f"Cleaned dataset shape: {full_df.shape}")
 print(full_df.describe())
@@ -45,11 +45,14 @@ features = ['voltage', 'current']
 X = full_df[features].values.astype(np.float32)
 y = full_df['remaining_time'].values.astype(np.float32)
 
-# Normalize
-X_mean, X_std = np.mean(X, axis=0), np.std(X, axis=0) + 1e-8  # Avoid div0
+# Log-transform remaining_time to handle large range
+y_log = np.log1p(y + 1)  # Add 1 to avoid log(0)
+
+# Normalize features and log-transformed target
+X_mean, X_std = np.mean(X, axis=0), np.std(X, axis=0) + 1e-8
 X_norm = (X - X_mean) / X_std
-y_mean, y_std = np.mean(y), np.std(y) + 1e-8
-y_norm = (y - y_mean) / y_std
+y_log_mean, y_log_std = np.mean(y_log), np.std(y_log) + 1e-8
+y_log_norm = (y_log - y_log_mean) / y_log_std
 
 # Split (80/20 random)
 np.random.seed(42)
@@ -57,7 +60,8 @@ indices = np.random.permutation(len(X))
 split_idx = int(0.8 * len(X))
 train_idx, test_idx = indices[:split_idx], indices[split_idx:]
 X_train, X_test = X_norm[train_idx], X_norm[test_idx]
-y_train, y_test = y_norm[train_idx], y_norm[test_idx]
+y_train, y_test = y_log_norm[train_idx], y_log_norm[test_idx]
+y_train_orig, y_test_orig = y[train_idx], y[test_idx]  # For evaluation
 
 # To Tensors
 train_dataset = TensorDataset(torch.from_numpy(X_train), torch.from_numpy(y_train).unsqueeze(1))
@@ -65,26 +69,32 @@ train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
 X_test_t = torch.from_numpy(X_test)
 y_test_t = torch.from_numpy(y_test).unsqueeze(1)
 
-# Step 4: Define Model
+# Step 4: Define Improved Model
 class BatteryMLP(nn.Module):
     def __init__(self):
         super().__init__()
-        self.fc1 = nn.Linear(2, 64)
-        self.fc2 = nn.Linear(64, 32)
-        self.fc3 = nn.Linear(32, 1)
+        self.fc1 = nn.Linear(2, 128)
+        self.fc2 = nn.Linear(128, 64)
+        self.fc3 = nn.Linear(64, 32)
+        self.fc4 = nn.Linear(32, 1)
         self.relu = nn.ReLU()
+        self.dropout = nn.Dropout(0.2)
     
     def forward(self, x):
         x = self.relu(self.fc1(x))
+        x = self.dropout(x)
         x = self.relu(self.fc2(x))
-        return self.fc3(x)
+        x = self.dropout(x)
+        x = self.relu(self.fc3(x))
+        return self.fc4(x)
 
 model = BatteryMLP()
 criterion = nn.MSELoss()
 optimizer = optim.Adam(model.parameters(), lr=0.001)
+scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=20)
 
 # Step 5: Train
-epochs = 200
+epochs = 500
 for epoch in range(epochs):
     model.train()
     total_loss = 0
@@ -93,10 +103,12 @@ for epoch in range(epochs):
         outputs = model(batch_x)
         loss = criterion(outputs, batch_y)
         loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)  # Gradient clipping
         optimizer.step()
         total_loss += loss.item()
+    avg_loss = total_loss / len(train_loader)
+    scheduler.step(avg_loss)
     if (epoch + 1) % 50 == 0:
-        avg_loss = total_loss / len(train_loader)
         print(f'Epoch [{epoch+1}/{epochs}], Loss: {avg_loss:.4f}')
 
 # Step 6: Evaluate
@@ -105,38 +117,72 @@ with torch.no_grad():
     y_pred_train = model(torch.from_numpy(X_train)).numpy()
     y_pred_test = model(X_test_t).numpy()
 
-# Denormalize
-y_train_den = y_train * y_std + y_mean
-y_test_den = y_test * y_std + y_mean
-y_pred_train_den = y_pred_train * y_std + y_mean
-y_pred_test_den = y_pred_test * y_std + y_mean
+# Denormalize predictions (log space to original)
+y_pred_train = np.expm1((y_pred_train * y_log_std) + y_log_mean) - 1
+y_pred_test = np.expm1((y_pred_test * y_log_std) + y_log_mean) - 1
+y_train_orig = np.maximum(y_train_orig, 0)
+y_test_orig = np.maximum(y_test_orig, 0)
+y_pred_train = np.maximum(y_pred_train, 0)
+y_pred_test = np.maximum(y_pred_test, 0)
 
-# MSE (in seconds^2)
-train_mse = np.mean((y_pred_train_den - y_train_den)**2)
-test_mse = np.mean((y_pred_test_den - y_test_den)**2)
+# Calculate MSE and MAE (in hours)
+train_mse = np.mean((y_pred_train - y_train_orig)**2)
+test_mse = np.mean((y_pred_test - y_test_orig)**2)
+train_mae_hours = np.mean(np.abs((y_pred_train - y_train_orig) / 3600))
+test_mae_hours = np.mean(np.abs((y_pred_test - y_test_orig) / 3600))
 print(f'Train MSE: {train_mse:.2f} s²')
 print(f'Test MSE: {test_mse:.2f} s²')
-print(f'Relative Test Error: {np.sqrt(test_mse) / np.mean(y_test_den):.2%}')
+print(f'Train MAE: {train_mae_hours:.2f} hours')
+print(f'Test MAE: {test_mae_hours:.2f} hours')
+print(f'Relative Test Error: {np.sqrt(test_mse) / np.mean(y_test_orig):.2%}')
 
-# Optional: Plot predictions vs actual (test set)
+# Plot predictions vs actual (test set)
 plt.figure(figsize=(8, 6))
-plt.scatter(y_test_den, y_pred_test_den, alpha=0.5)
-plt.plot([y_test_den.min(), y_test_den.max()], [y_test_den.min(), y_test_den.max()], 'r--')
-plt.xlabel('Actual Remaining Time (s)')
-plt.ylabel('Predicted Remaining Time (s)')
+plt.scatter(y_test_orig / 3600, y_pred_test / 3600, alpha=0.5)
+plt.plot([0, y_test_orig.max() / 3600], [0, y_test_orig.max() / 3600], 'r--')
+plt.xlabel('Actual Remaining Time (hours)')
+plt.ylabel('Predicted Remaining Time (hours)')
 plt.title('Model Predictions vs Actual')
 plt.show()
 
-# Step 7: Inference Function (for accurate output)
-def predict_remaining_time(model, voltage, current, X_scaler=(X_mean, X_std), y_scaler=(y_mean, y_std)):
+# Step 7: Inference Function
+def predict_remaining_time(model, voltage, current, X_scaler=(X_mean, X_std), y_scaler=(y_log_mean, y_log_std)):
     input_arr = np.array([[voltage, current]], dtype=np.float32)
     input_norm = (input_arr - X_scaler[0]) / X_scaler[1]
     model.eval()
     with torch.no_grad():
         pred_norm = model(torch.from_numpy(input_norm)).numpy()
-    pred = pred_norm * y_scaler[1] + y_scaler[0]
-    return pred[0][0]
+    pred = np.expm1((pred_norm * y_scaler[1]) + y_scaler[0]) - 1
+    return max(pred[0][0], 0)
 
-# Example
-example_time = predict_remaining_time(model, voltage=3.6, current=0.05)
-print(f'Predicted remaining time for 3.6 V at 0.05 A: {example_time:.0f} seconds (~{example_time/3600:.1f} hours)')
+# Step 8: Interactive Prediction Loop
+print("\nEnter voltage (V) and current (A) to predict remaining time.")
+print("Voltage range: 0 to 4.2 V, Current range: 0.001 to 10 A")
+print("Enter 'q' or 'quit' to exit.")
+while True:
+    try:
+        voltage_input = input("Enter voltage (V): ")
+        if voltage_input.lower() in ['q', 'quit']:
+            print("Exiting prediction loop.")
+            break
+        voltage = float(voltage_input)
+        if not (0 <= voltage <= 4.2):
+            print("Voltage must be between 0 and 4.2 V. Try again.")
+            continue
+        
+        current_input = input("Enter current (A): ")
+        if current_input.lower() in ['q', 'quit']:
+            print("Exiting prediction loop.")
+            break
+        current = float(current_input)
+        if not (0.001 <= current <= 10):
+            print("Current must be between 0.001 and 10 A. Try again.")
+            continue
+        
+        predicted_time = predict_remaining_time(model, voltage, current)
+        print(f'Predicted remaining time for {voltage:.3f} V at {current:.3f} A: '
+              f'{predicted_time:.0f} seconds (~{predicted_time/3600:.1f} hours)')
+    
+    except ValueError:
+        print("Invalid input. Please enter numeric values for voltage and current.")
+    print()
